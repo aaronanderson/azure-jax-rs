@@ -20,6 +20,6 @@ Finally debugging JAX-RS HTTP invocations at the wire level is surprising challe
 
 3. For DocumentDB and Storage primary and secondary keys are provided for the accounts. Please record the primary key values as they will be used as the MasterKey in Storage and DocumentDB utility classes. For search primary and secondary secret API keys are used and the primary API key is used as the MasterKey in the search utility class.
 
-4. Please examine the [JUnit tests](../blob/master/src/test/java/com/cpsgpartners/azure) to see how the utility classes can be invoked. Before running the tests please plug in the correct CLIENT_ID and MASTER_KEY values into the variables at the top of the JUnit tests.
+4. Please examine the [JUnit tests](../master/src/test/java/com/cpsgpartners/azure) to see how the utility classes can be invoked. Before running the tests please plug in the correct CLIENT_ID and MASTER_KEY values into the variables at the top of the JUnit tests.
 
 ----
