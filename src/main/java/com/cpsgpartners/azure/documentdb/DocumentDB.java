@@ -33,6 +33,10 @@ import javax.ws.rs.core.Response;
 public class DocumentDB {
 
 	public static final String AZURE_DOCUMENTDB_ENDPOINT = "https://%s.documents.azure.com";
+	
+	//DateTimeFormatter.RFC_1123_DATE_TIME does not pad the date as required by Azure
+	public static final DateTimeFormatter RFC1123_DATE_TIME = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z");
+
 
 	public static enum ConsistencyLevel {
 		Strong, Bounded, Session, Eventual;
@@ -59,6 +63,10 @@ public class DocumentDB {
 	public JsonObject createDatabase(String databaseId) throws WebApplicationException {
 		return operation(endpoint.path("/dbs"), null, null, "POST", Response.Status.CREATED.getStatusCode(),
 				Entity.entity(Json.createObjectBuilder().add("id", databaseId).build(), MediaType.APPLICATION_JSON_TYPE), "dbs", "");
+	}
+
+	public JsonObject listDatabases() throws WebApplicationException {
+		return operation(endpoint.path("/dbs"), null, null, "GET", Response.Status.OK.getStatusCode(), null, "dbs", "");
 	}
 
 	public void deleteDatabase(String dbResourceId) throws WebApplicationException {
@@ -311,7 +319,7 @@ public class DocumentDB {
 	public Builder setHeaders(Builder builder, String path, String verb, String resourceType, String resourceId) throws WebApplicationException {
 		try {
 			ZonedDateTime currentTime = ZonedDateTime.now(ZoneId.of("GMT"));
-			String date = DateTimeFormatter.RFC_1123_DATE_TIME.format(currentTime);
+			String date = RFC1123_DATE_TIME.format(currentTime);
 			builder.header("x-ms-date", date);
 			builder.accept(MediaType.APPLICATION_JSON_TYPE);
 			String stringToSign = String.format("%s\n%s\n%s\n%s\n%s\n", verb, resourceType, resourceId, date, "").toLowerCase();

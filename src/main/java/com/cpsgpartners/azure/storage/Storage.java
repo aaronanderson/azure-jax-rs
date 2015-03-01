@@ -42,6 +42,8 @@ public class Storage {
 	public static final String AZURE_STORAGE_VERSION = "2014-02-14";
 	public static final DateTimeFormatter ISO8061_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 	public static final DateTimeFormatter ISO8061_DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssX");
+	//DateTimeFormatter.RFC_1123_DATE_TIME does not pad the date as required by Azure
+	public static final DateTimeFormatter RFC1123_DATE_TIME = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z");
 
 	private final String id;
 	private final String masterKey;
@@ -202,7 +204,7 @@ public class Storage {
 	public void setSharedKeyLiteHeader(URI requestURI, Builder builder, String method, String contentType, MultivaluedMap<String, Object> headers) throws WebApplicationException {
 		//x-ms-blob-public-access container blob
 		ZonedDateTime currentTime = ZonedDateTime.now(ZoneId.of("GMT"));
-		String date = DateTimeFormatter.RFC_1123_DATE_TIME.format(currentTime);
+		String date = RFC1123_DATE_TIME.format(currentTime);
 
 		headers.add("x-ms-date", date);
 		headers.add("x-ms-version", AZURE_STORAGE_VERSION);
@@ -237,7 +239,7 @@ public class Storage {
 	public void setSharedKeyHeader(Builder builder, String method, MultivaluedMap<String, Object> headers) {
 
 		ZonedDateTime currentTime = ZonedDateTime.now(ZoneId.of("GMT"));
-		String date = DateTimeFormatter.RFC_1123_DATE_TIME.format(currentTime);
+		String date = RFC1123_DATE_TIME.format(currentTime);
 		StringBuilder authHeader = new StringBuilder();
 		authHeader.append(method).append("\n");
 		//authHeader.append(headers.getFirst(key)).append("\n");
