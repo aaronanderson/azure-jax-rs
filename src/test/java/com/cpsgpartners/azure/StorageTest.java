@@ -6,8 +6,11 @@ import java.io.ByteArrayInputStream;
 
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.junit.Test;
+import org.w3c.dom.Document;
 
 import com.cpsgpartners.azure.storage.Storage;
 import com.cpsgpartners.azure.storage.Storage.BlobFile;
@@ -46,8 +49,13 @@ public class StorageTest {
 		Storage storage = new Storage(CLIENT_ID, MASTER_KEY);
 		try {
 			storage.createContainer("testcontainer");
+			Response contResp = storage.getContainer("testcontainer");
+			assertNotNull(contResp);
+			contResp.close();
 			ByteArrayInputStream bis = new ByteArrayInputStream("Test Contents".getBytes());
 			storage.createOrUpdateBlob("testcontainer", "testblob", new BlobFile(bis, "test.txt", MediaType.TEXT_PLAIN));
+			Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(storage.listContainers());
+			assertNotNull(doc);
 			BlobFile blob = storage.getBlob("testcontainer", "testblob");
 			java.util.Scanner s = new java.util.Scanner(blob.content).useDelimiter("\\A");
 			//System.out.format("File: %s - %s\n", blob.fileName, s.next());

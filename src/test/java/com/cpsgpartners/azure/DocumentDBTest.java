@@ -2,14 +2,20 @@ package com.cpsgpartners.azure;
 
 import static org.junit.Assert.assertNotNull;
 
+import java.io.Serializable;
+
 import javax.json.Json;
 import javax.json.JsonObject;
+import javax.ws.rs.ProcessingException;
 import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.ext.ContextResolver;
 
 import org.junit.Test;
 
 import com.cpsgpartners.azure.documentdb.DocumentDB;
-import com.cpsgpartners.azure.documentdb.DocumentDB.QueryResult;
+import com.cpsgpartners.azure.documentdb.QueryResult;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class DocumentDBTest {
 
@@ -18,9 +24,23 @@ public class DocumentDBTest {
 
 	/*
 	//@Test
-	public void testMSCreateCollection() throws Exception {	
+	public void testMSCreateCollection() throws Exception {
+	  Properties props = new Properties();
+	props.setProperty("log4j.rootLogger", "INFO, stdout");
+	props.setProperty("log4j.appender.stdout", "org.apache.log4j.ConsoleAppender");
+	props.setProperty("log4j.appender.stdout.layout", "org.apache.log4j.PatternLayout");
+	props.setProperty("log4j.appender.stdout.layout.ConversionPattern", "%5p [%t] (%c) - %m%n");
+	PropertyConfigurator.configure(props);
+	
+		System.setProperty("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.SimpleLog");
 
-		DocumentClient documentClient = new DocumentClient("https://client.documents.azure.com", MASTER_KEY, ConnectionPolicy.GetDefault(), ConsistencyLevel.Session);
+		System.setProperty("org.apache.commons.logging.simplelog.showdatetime", "true");
+
+		System.setProperty("org.apache.commons.logging.simplelog.log.httpclient.wire.header", "debug");
+
+		System.setProperty("org.apache.commons.logging.simplelog.log.org.apache.commons.httpclient", "debug");
+
+		DocumentClient documentClient = new DocumentClient("https://cpsgpartners.documents.azure.com", MASTER_KEY, ConnectionPolicy.GetDefault(), ConsistencyLevel.Session);
 
 		// Define a new database using the id above.
 		Database myDatabase = new Database();
@@ -57,15 +77,74 @@ public class DocumentDBTest {
 
 	}*/
 
+	public static class ObjectMapperContextResolver implements ContextResolver<ObjectMapper> {
+		private ObjectMapper mapper = null;
+
+		public ObjectMapperContextResolver() {
+			mapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+		}
+
+		@Override
+		public ObjectMapper getContext(Class<?> type) {
+			return mapper;
+		}
+	}
+
+	public static class SerTest implements Serializable {
+
+		private String id;
+
+		private String foo;
+		private int bar;
+
+		public String getId() {
+			return id;
+		}
+
+		public void setId(String id) {
+			this.id = id;
+		}
+
+		public String getFoo() {
+			return foo;
+		}
+
+		public void setFoo(String foo) {
+			this.foo = foo;
+		}
+
+		public int getBar() {
+			return bar;
+		}
+
+		public void setBar(int bar) {
+			this.bar = bar;
+		}
+
+	}
+	
+	//A subclass is required due to JAX-RS read restriction to class type and java type erasure
+	public static class SerTestQuery extends QueryResult<SerTest> {
+	}
+
 	@Test
 	public void testDocumentDB() throws Exception {
-		DocumentDB documentDB = new DocumentDB(CLIENT_ID, MASTER_KEY, com.cpsgpartners.azure.documentdb.DocumentDB.ConsistencyLevel.Session);
+		DocumentDB documentDB = new DocumentDB(CLIENT_ID, MASTER_KEY, com.cpsgpartners.azure.documentdb.DocumentDB.ConsistencyLevel.Session, ObjectMapperContextResolver.class);
 		String dbResId = null;
 		try {
 			JsonObject documentDb = documentDB.createDatabase("TestDB");
 			//System.out.format("Create Database %s\n", documentDb);
 			assertNotNull(documentDB);
 			dbResId = documentDb.getString("_rid");
+
+			documentDb = documentDB.getDatabase(dbResId);
+			//System.out.format("Get Database %s\n", documentDb);
+			assertNotNull(documentDB);
+
+			JsonObject documentDbList = documentDB.listDatabases();
+			//System.out.format("Create Database %s\n", documentDb);
+			assertNotNull(documentDbList);
 
 			JsonObject collection = documentDB.createCollection(documentDb.getString("_rid"), "TestCollectionID");
 			//System.out.format("Create Collection %s\n", collection);
@@ -76,29 +155,48 @@ public class DocumentDBTest {
 			assertNotNull(collectionList);
 
 			JsonObject document = Json.createObjectBuilder().add("id", "TestDocumentID").add("foo", "bar").build();
-			document = documentDB.createDocument(documentDb.getString("_rid"), collection.getString("_rid"), document);
+			document = documentDB.createDocument(documentDb.getString("_rid"), collection.getString("_rid"), document, JsonObject.class, null);
 			//System.out.format("Create Document %s\n", document);
 			assertNotNull(document);
 
-			JsonObject documentList = documentDB.listDocuments(documentDb.getString("_rid"), collection.getString("_rid"));
+			JsonObject documentList = documentDB.listDocuments(documentDb.getString("_rid"), collection.getString("_rid"), JsonObject.class);
 			//System.out.format("List Documents %s\n", documentList);
 			assertNotNull(documentList);
 
 			JsonObject newDocument = Json.createObjectBuilder().add("id", "TestDocumentID").add("foo2", "bar2").build();
-			document = documentDB.replaceDocument(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), newDocument);
+			document = documentDB.replaceDocument(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), newDocument, JsonObject.class, null);
 			//System.out.format("Replace Document %s\n", document);
 			assertNotNull(document);
 
-			document = documentDB.getDocument(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"));
+			document = documentDB.getDocument(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), JsonObject.class);
 			//System.out.format("Get Document %s\n", document);
 			assertNotNull(document);
 
+			SerTest serTest = new SerTest();
+			serTest.setId("TestInstanceID1");
+			serTest.setFoo("FooValue1");
+			serTest.setBar(10);
+			document = documentDB.createDocument(documentDb.getString("_rid"), collection.getString("_rid"), serTest, JsonObject.class, null);
+			System.out.format("Create Object %s\n", document);
+			assertNotNull(document);
+
+			serTest = new SerTest();
+			serTest.setId("TestInstanceID2");
+			serTest.setFoo("FooValue2");
+			serTest.setBar(20);
+			serTest = documentDB.createDocument(documentDb.getString("_rid"), collection.getString("_rid"), serTest, SerTest.class, null);
+			System.out.format("Create Object %s\n", serTest.getId());
+			assertNotNull(document);
+
 			//System.out.format("Query Documents\n");
-			QueryResult qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", -1, null);
+			//System.out.format("%s\n", documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", String.class, -1, null));
+
+			SerTestQuery qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", SerTestQuery.class, -1, null);
 			assertNotNull(qResult);
-			for (JsonObject qdoc : qResult) {
-				//System.out.format("\tQuery Result %s\n", qdoc);
-			}
+
+			/*for (SerTest qdoc : qResult.getDocuments()) {
+				System.out.format("\tQuery Result %s\n", qdoc.getId());
+			}*/
 
 			JsonObject attachment = documentDB.createAttachment(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), "TestAttachmentID", "text.txt", "text/plain",
 					"https://azure/test.txt");
@@ -127,15 +225,17 @@ public class DocumentDBTest {
 			documentDB.deleteDatabase(documentDb.getString("_rid"));
 			//System.out.format("Delete Database\n");
 
+		} catch (ProcessingException pe) {
+			pe.getCause().printStackTrace();
 		} catch (WebApplicationException we) {
 			String message = we.getMessage();
 			if (we.getResponse().hasEntity()) {
 				message = String.format("%s - %s", message, we.getResponse().readEntity(JsonObject.class));
 			}
-			try {
+			/*try {
 				documentDB.deleteDatabase(dbResId);
 			} catch (WebApplicationException e) {
-			}
+			}*/
 			org.junit.Assert.fail(message);
 		}
 

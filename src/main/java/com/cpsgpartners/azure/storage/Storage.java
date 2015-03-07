@@ -33,6 +33,8 @@ import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 
+import org.w3c.dom.Document;
+
 //import org.glassfish.jersey.filter.LoggingFilter;
 
 //https://github.com/Azure/azure-storage-java
@@ -53,7 +55,7 @@ public class Storage {
 	public Storage(String id, String masterKey) {
 		this.id = id;
 		this.masterKey = masterKey;
-		client = ClientBuilder.newClient(); //.property("jersey.config.client.suppressHttpComplianceValidation", "true");//otherwise container put without body causes error;
+		client = ClientBuilder.newClient();//.property("jersey.config.client.suppressHttpComplianceValidation", "true");//otherwise container put without body or delete with body causes error;
 		//client.register(new LoggingFilter());
 		endpoint = client.target(String.format(AZURE_STORAGE_ENDPOINT, id));
 	}
@@ -62,12 +64,20 @@ public class Storage {
 
 	public void createContainer(String containerName) throws WebApplicationException {
 		//Entity required so Content-Length 0 sent. Would like to send empty Content-Type value but it is not possible
-		operation(endpoint.path(containerName).queryParam("restype", "container"), "PUT", null, Response.Status.CREATED.getStatusCode(), Entity.entity("", MediaType.WILDCARD_TYPE), null);
+		operation(endpoint.path(containerName).queryParam("restype", "container"), "PUT", null, Response.Status.CREATED, Entity.entity("", MediaType.WILDCARD_TYPE), null);
+	}
+
+	public InputStream listContainers() throws WebApplicationException {
+		return operation(endpoint.path("/").queryParam("comp", "list"), "GET", null, Response.Status.OK, null, InputStream.class);
+	}
+
+	public Response getContainer(String containerName) throws WebApplicationException {
+		return operation(endpoint.path(containerName).queryParam("restype", "container"), "GET", null, Response.Status.OK, null, Response.class);
 	}
 
 	public void deleteContainer(String containerName) throws WebApplicationException {
 		//Entity required so Content-Length 0 sent. Would like to send empty Content-Type value but it is not possible
-		operation(endpoint.path(containerName).queryParam("restype", "container"), "DELETE", null, Response.Status.ACCEPTED.getStatusCode(), Entity.entity(null, MediaType.WILDCARD_TYPE), null);
+		operation(endpoint.path(containerName).queryParam("restype", "container"), "DELETE", null, Response.Status.ACCEPTED, null, null);
 	}
 
 	public static class BlobFile implements Serializable {
@@ -105,12 +115,12 @@ public class Storage {
 		MultivaluedMap<String, Object> headers = new MultivaluedHashMap<String, Object>();
 		headers.add("x-ms-blob-content-disposition", String.format("attachment; filename=\"%s\"", blob.fileName));
 		headers.add("x-ms-blob-type", "BlockBlob");
-		operation(endpoint.path(containerName).path(blobName), "PUT", headers, Response.Status.CREATED.getStatusCode(), Entity.entity(blob.content, blob.contentType), null);
+		operation(endpoint.path(containerName).path(blobName), "PUT", headers, Response.Status.CREATED, Entity.entity(blob.content, blob.contentType), null);
 	}
 
 	//TODO possibly specify last modified header
 	public BlobFile getBlob(String containerName, String blobName) throws WebApplicationException {
-		return new BlobFile(operation(endpoint.path(containerName).path(blobName), "GET", null, Response.Status.OK.getStatusCode(), null, Response.class));
+		return new BlobFile(operation(endpoint.path(containerName).path(blobName), "GET", null, Response.Status.OK, null, Response.class));
 	}
 
 	public String sharedAccessURL(String containerName, String blobName, String permissions, ZonedDateTime startTime, Duration expiryDuration, boolean longFormat) {
@@ -173,7 +183,8 @@ public class Storage {
 		return request.toString();
 	}
 
-	public <T> T operation(WebTarget target, String method, MultivaluedMap<String, Object> headers, int expectedStatus, Entity<?> requestContent, Class<T> responseType) throws WebApplicationException {
+	public <T> T operation(WebTarget target, String method, MultivaluedMap<String, Object> headers, Response.Status expectedStatus, Entity<?> requestContent, Class<T> responseType)
+			throws WebApplicationException {
 		Builder builder = target.request();
 		if (headers == null) {
 			headers = new MultivaluedHashMap<String, Object>();
@@ -185,17 +196,23 @@ public class Storage {
 
 		//https://myaccount.blob.core.windows.net/mycontainer?restype=container
 
-		if (response.getStatusInfo().getStatusCode() != expectedStatus) {
+		if (expectedStatus != null && response.getStatusInfo().getStatusCode() != expectedStatus.getStatusCode()) {
 			throw new WebApplicationException(response);
 		}
-
-		if (response.hasEntity()) {
+		if (responseType != null) {
 			if (responseType.isAssignableFrom(Response.class)) {
 				return (T) response;
 			}
-			return response.readEntity(responseType);
-		}
 
+			if (response.hasEntity()) {
+				T ro = response.readEntity(responseType);
+				if (!responseType.isAssignableFrom(InputStream.class)) {
+					response.close();
+				}
+				return ro;
+			}
+		}
+		response.close();
 		return null;
 
 	}
@@ -220,6 +237,10 @@ public class Storage {
 		stringToSign.append("/").append(id);
 		if (requestURI.getPath() != null) {
 			stringToSign.append(requestURI.getPath());
+		}
+		if (requestURI.getQuery() != null && requestURI.getQuery().contains("comp")) {
+			MultivaluedMap<String, Object> params = parseQuery(requestURI.getQuery());
+			stringToSign.append("?").append("comp=").append(params.getFirst("comp"));
 		}
 		//canonicalize(stringToSign, parseQuery(requestURI.getQuery())); //apparently not needed with lite
 

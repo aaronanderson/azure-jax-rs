@@ -28,30 +28,29 @@ public class Search {
 	}
 
 	public JsonObject createIndex(JsonObject index) throws WebApplicationException {
-		return operation(endpoint.path("indexes").queryParam("api-version", AZURE_SEARCH_VERSION), "POST", Response.Status.CREATED.getStatusCode(),
-				Entity.entity(index, MediaType.APPLICATION_JSON_TYPE));
+		return operation(endpoint.path("indexes").queryParam("api-version", AZURE_SEARCH_VERSION), "POST", Response.Status.CREATED, Entity.entity(index, MediaType.APPLICATION_JSON_TYPE));
 	}
 
 	public JsonObject getIndex(String indexName) throws WebApplicationException {
-		return operation(endpoint.path("indexes").path(indexName).queryParam("api-version", AZURE_SEARCH_VERSION), "GET", Response.Status.OK.getStatusCode(), null);
+		return operation(endpoint.path("indexes").path(indexName).queryParam("api-version", AZURE_SEARCH_VERSION), "GET", Response.Status.OK, null);
 	}
 
 	public JsonObject listIndexes() throws WebApplicationException {
-		return operation(endpoint.path("indexes").queryParam("api-version", AZURE_SEARCH_VERSION), "GET", Response.Status.OK.getStatusCode(), null);
+		return operation(endpoint.path("indexes").queryParam("api-version", AZURE_SEARCH_VERSION), "GET", Response.Status.OK, null);
 	}
 
 	public JsonObject updateIndex(String indexName, JsonObject index) throws WebApplicationException {
-		return operation(endpoint.path("indexes").path(indexName).queryParam("api-version", AZURE_SEARCH_VERSION), "PUT", Response.Status.NO_CONTENT.getStatusCode(),
+		return operation(endpoint.path("indexes").path(indexName).queryParam("api-version", AZURE_SEARCH_VERSION), "PUT", Response.Status.NO_CONTENT,
 				Entity.entity(index, MediaType.APPLICATION_JSON_TYPE));
 	}
 
 	public void deleteIndex(String indexName) throws WebApplicationException {
-		operation(endpoint.path("indexes").path(indexName).queryParam("api-version", AZURE_SEARCH_VERSION), "DELETE", Response.Status.NO_CONTENT.getStatusCode(), null);
+		operation(endpoint.path("indexes").path(indexName).queryParam("api-version", AZURE_SEARCH_VERSION), "DELETE", Response.Status.NO_CONTENT, null);
 	}
 
 	//available actions: upload,merge,mergeOrUpload,delete
 	public JsonObject processDocuments(String indexName, JsonObject documents) throws WebApplicationException {
-		return operation(endpoint.path("indexes").path(indexName).path("docs/index").queryParam("api-version", AZURE_SEARCH_VERSION), "POST", Response.Status.OK.getStatusCode(),
+		return operation(endpoint.path("indexes").path(indexName).path("docs/index").queryParam("api-version", AZURE_SEARCH_VERSION), "POST", Response.Status.OK,
 				Entity.entity(documents, MediaType.APPLICATION_JSON_TYPE));
 	}
 
@@ -60,7 +59,7 @@ public class Search {
 		if (fields.length > 0) {
 			lookup = lookup.queryParam("$select", toCSV(fields));
 		}
-		return operation(lookup, "GET", Response.Status.OK.getStatusCode(), null);
+		return operation(lookup, "GET", Response.Status.OK, null);
 	}
 
 	public static class SearchQuery {
@@ -195,7 +194,7 @@ public class Search {
 
 		lookup = lookup.queryParam("api-version", AZURE_SEARCH_VERSION);
 
-		return operation(lookup, "GET", Response.Status.OK.getStatusCode(), null);
+		return operation(lookup, "GET", Response.Status.OK, null);
 	}
 
 	public static class SuggestQuery {
@@ -275,23 +274,26 @@ public class Search {
 
 		lookup = lookup.queryParam("api-version", AZURE_SEARCH_VERSION);
 
-		return operation(lookup, "GET", Response.Status.OK.getStatusCode(), null);
+		return operation(lookup, "GET", Response.Status.OK, null);
 	}
 
-	public JsonObject operation(WebTarget target, String method, int expectedStatus, Entity<?> body) throws WebApplicationException {
+	public JsonObject operation(WebTarget target, String method, Response.Status expectedStatus, Entity<?> body) throws WebApplicationException {
 
 		Builder builder = target.request();
 		builder.header("api-key", masterKey);
 
 		Response response = builder.method(method, body);
 
-		if (response.getStatusInfo().getStatusCode() != expectedStatus) {
+		if (expectedStatus != null && response.getStatusInfo().getStatusCode() != expectedStatus.getStatusCode()) {
 			throw new WebApplicationException(response);
 		}
 
 		if (response.hasEntity()) {
-			return response.readEntity(JsonObject.class);
+			JsonObject jr = response.readEntity(JsonObject.class);
+			response.close();
+			return jr;
 		}
+		response.close();
 		return null;
 
 	}
