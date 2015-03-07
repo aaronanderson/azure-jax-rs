@@ -9,6 +9,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.regex.Matcher;
@@ -29,6 +30,9 @@ import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilderException;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 //import org.glassfish.jersey.filter.LoggingFilter;
 
@@ -223,6 +227,22 @@ public class DocumentDB {
 		public String getContinuationToken() {
 			return continuationToken;
 		}
+
+	}
+
+	public static interface QueryResult<R> {
+
+		public List<R> getDocuments();
+
+		public void setDocuments(List<R> documents);
+
+		public String getRId();
+
+		public void setRid(String rId);
+
+		public String getContinuation();
+
+		public void setContinuation(String continuation);
 
 	}
 

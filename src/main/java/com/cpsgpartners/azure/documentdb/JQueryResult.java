@@ -2,10 +2,11 @@ package com.cpsgpartners.azure.documentdb;
 
 import java.util.List;
 
+import com.cpsgpartners.azure.documentdb.DocumentDB.QueryResult;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class QueryResult<R> {
+public class JQueryResult<R> implements QueryResult<R>{
 	
 	@JsonProperty("Documents")
 	private List<R> documents;

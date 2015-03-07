@@ -177,7 +177,7 @@ public class DocumentDBTest {
 			serTest.setFoo("FooValue1");
 			serTest.setBar(10);
 			document = documentDB.createDocument(documentDb.getString("_rid"), collection.getString("_rid"), serTest, JsonObject.class, null);
-			System.out.format("Create Object %s\n", document);
+			//System.out.format("Create Object %s\n", document);
 			assertNotNull(document);
 
 			serTest = new SerTest();
@@ -185,7 +185,7 @@ public class DocumentDBTest {
 			serTest.setFoo("FooValue2");
 			serTest.setBar(20);
 			serTest = documentDB.createDocument(documentDb.getString("_rid"), collection.getString("_rid"), serTest, SerTest.class, null);
-			System.out.format("Create Object %s\n", serTest.getId());
+			//System.out.format("Create Object %s\n", serTest.getId());
 			assertNotNull(document);
 
 			//System.out.format("Query Documents\n");
