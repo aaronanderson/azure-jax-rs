@@ -8,7 +8,6 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -18,6 +17,7 @@ import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import javax.json.Json;
+import javax.json.JsonArrayBuilder;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
 import javax.ws.rs.WebApplicationException;
@@ -26,13 +26,9 @@ import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation.Builder;
 import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilderException;
-
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 //import org.glassfish.jersey.filter.LoggingFilter;
 
@@ -40,6 +36,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class DocumentDB {
 
 	public static final String AZURE_DOCUMENTDB_ENDPOINT = "https://%s.documents.azure.com";
+	public static final String AZURE_DOCUMENTDB_VERSION ="2014-08-21";
 
 	//DateTimeFormatter.RFC_1123_DATE_TIME does not pad the date as required by Azure
 	public static final DateTimeFormatter RFC1123_DATE_TIME = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z");
@@ -238,7 +235,7 @@ public class DocumentDB {
 
 		public String getRId();
 
-		public void setRid(String rId);
+		public void setRId(String rId);
 
 		public String getContinuation();
 
@@ -257,7 +254,8 @@ public class DocumentDB {
 		return result;
 	}
 
-	/*public QueryResult queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, int pageSize, String continuationToken) throws WebApplicationException {
+	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, Class<R> responseType, int pageSize, String continuationToken)
+			throws WebApplicationException {
 		QueryResponse qresponse = new QueryResponse();
 		JsonArrayBuilder paramBuilder = Json.createArrayBuilder();
 		if (parameters != null) {
@@ -266,10 +264,14 @@ public class DocumentDB {
 			}
 		}
 		JsonObject queryObject = Json.createObjectBuilder().add("query", query).add("parameters", paramBuilder).build();
-		JsonObject result = operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new QueryRequest(pageSize, continuationToken), qresponse, "POST",
-				Response.Status.OK, Entity.entity(queryObject, "application/query+json"), JsonObject.class, "docs", collectionResId);
-		return new QueryResult(result, qresponse.getContinuationToken());
-	}*/
+		R result = operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new QueryRequest(pageSize, continuationToken), qresponse, "POST",
+				Response.Status.OK, Entity.entity(queryObject, "application/query+json"), responseType, "docs", collectionResId);
+		if (result instanceof QueryResult) {
+			QueryResult qResult = (QueryResult) result;
+			qResult.setContinuation(qresponse.getContinuationToken());
+		}
+		return result;
+	}
 
 	public static class FileNameIndexRequestHelper implements RequestHandler {
 		String fileName;
@@ -397,6 +399,7 @@ public class DocumentDB {
 			ZonedDateTime currentTime = ZonedDateTime.now(ZoneId.of("GMT"));
 			String date = RFC1123_DATE_TIME.format(currentTime);
 			builder.header("x-ms-date", date);
+			builder.header("x-ms-version", AZURE_DOCUMENTDB_VERSION);
 			builder.accept(MediaType.APPLICATION_JSON_TYPE);
 			String stringToSign = String.format("%s\n%s\n%s\n%s\n%s\n", verb, resourceType, resourceId, date, "").toLowerCase();
 			Mac sha256_HMAC = Mac.getInstance("HMACSHA256");
@@ -418,15 +421,6 @@ public class DocumentDB {
 		} catch (NoSuchAlgorithmException | InvalidKeyException | UnsupportedEncodingException e) {
 			throw new WebApplicationException(e);
 		}
-	}
-
-	public Builder setPageOptions(Builder builder, int pageSize) {
-		if (pageSize > -1) {
-			builder.header("x-ms-max-item-count", pageSize);
-		}
-		//"x-ms-continuation";
-		//"x-ms-max-item-count";
-		return builder;
 	}
 
 }

@@ -13,7 +13,8 @@ import javax.ws.rs.ext.ContextResolver;
 import org.junit.Test;
 
 import com.cpsgpartners.azure.documentdb.DocumentDB;
-import com.cpsgpartners.azure.documentdb.QueryResult;
+import com.cpsgpartners.azure.documentdb.JQueryResult;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -81,7 +82,7 @@ public class DocumentDBTest {
 		private ObjectMapper mapper = null;
 
 		public ObjectMapperContextResolver() {
-			mapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+			mapper = new ObjectMapper();//.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
 		}
 
@@ -91,6 +92,7 @@ public class DocumentDBTest {
 		}
 	}
 
+	@JsonIgnoreProperties(ignoreUnknown = true)
 	public static class SerTest implements Serializable {
 
 		private String id;
@@ -125,7 +127,7 @@ public class DocumentDBTest {
 	}
 	
 	//A subclass is required due to JAX-RS read restriction to class type and java type erasure
-	public static class SerTestQuery extends QueryResult<SerTest> {
+	public static class SerTestQuery extends JQueryResult<SerTest> {
 	}
 
 	@Test
