@@ -14,7 +14,7 @@ import javax.ws.rs.core.Response;
 
 public class Search {
 	public static final String AZURE_DOCUMENTDB_ENDPOINT = "https://%s.search.windows.net";
-	public static final String AZURE_SEARCH_VERSION = "2014-07-31-Preview";
+	public static final String AZURE_SEARCH_VERSION = "2015-02-28";
 
 	private final String masterKey;
 	private final Client client;
@@ -204,6 +204,10 @@ public class Search {
 		}
 
 		String search;
+		String highlightPreTag;
+		String highlightPostTag;
+		String suggesterName;
+
 		Boolean fuzzy;
 		String searchFields;
 		int top = -1;
@@ -213,6 +217,21 @@ public class Search {
 
 		public SuggestQuery setSearch(String search) {
 			this.search = search;
+			return this;
+		}
+
+		public SuggestQuery setHighlightPreTag(String highlightPreTag) {
+			this.highlightPreTag = highlightPreTag;
+			return this;
+		}
+
+		public SuggestQuery setHighlightPostTag(String highlightPostTag) {
+			this.highlightPostTag = highlightPostTag;
+			return this;
+		}
+
+		public SuggestQuery setSuggesterName(String suggesterName) {
+			this.suggesterName = suggesterName;
 			return this;
 		}
 
@@ -252,6 +271,15 @@ public class Search {
 		WebTarget lookup = endpoint.path("indexes").path(indexName).path("docs/suggest");
 		if (query.search != null) {
 			lookup = lookup.queryParam("search", query.search);
+		}
+		if (query.highlightPreTag != null) {
+			lookup = lookup.queryParam("highlightPreTag", query.highlightPreTag);
+		}
+		if (query.highlightPostTag != null) {
+			lookup = lookup.queryParam("highlightPostTag", query.highlightPostTag);
+		}
+		if (query.suggesterName != null) {
+			lookup = lookup.queryParam("suggesterName", query.suggesterName);
 		}
 		if (query.fuzzy != null) {
 			lookup = lookup.queryParam("fuzzy", query.fuzzy);

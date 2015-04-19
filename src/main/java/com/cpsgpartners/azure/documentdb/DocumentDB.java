@@ -26,6 +26,7 @@ import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation.Builder;
 import javax.ws.rs.client.WebTarget;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilderException;
@@ -36,7 +37,7 @@ import javax.ws.rs.core.UriBuilderException;
 public class DocumentDB {
 
 	public static final String AZURE_DOCUMENTDB_ENDPOINT = "https://%s.documents.azure.com";
-	public static final String AZURE_DOCUMENTDB_VERSION ="2014-08-21";
+	public static final String AZURE_DOCUMENTDB_VERSION = "2015-04-08";
 
 	//DateTimeFormatter.RFC_1123_DATE_TIME does not pad the date as required by Azure
 	public static final DateTimeFormatter RFC1123_DATE_TIME = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z");
@@ -49,6 +50,30 @@ public class DocumentDB {
 
 	public static enum IndexDirective {
 		Include, Exclude;
+	}
+
+	public static enum ETagMode {
+		MATCH, NO_MATCH
+	}
+
+	public static class ETag {
+
+		private final ETagMode mode;
+		private final String value;
+
+		public ETag(ETagMode mode, String value) {
+			this.mode = mode;
+			this.value = value;
+		}
+
+		public ETagMode getMode() {
+			return mode;
+		}
+
+		public String getValue() {
+			return value;
+		}
+
 	}
 
 	public static class Id {
@@ -111,21 +136,33 @@ public class DocumentDB {
 		throw new UriBuilderException(String.format("invalid format %s", idURI));
 	}
 
+	public static Id newDocumentId(Id collectionId, String documentId) throws UriBuilderException {
+		return new Id(collectionId.getURI() + "/docs/" + documentId, collectionId.getDbId(), collectionId.getCollId(), documentId);
+	}
+
 	public JsonObject createDatabase(String databaseId) throws WebApplicationException {
-		return operation(endpoint.path("/dbs"), null, null, "POST", Response.Status.CREATED, Entity.entity(Json.createObjectBuilder().add("id", databaseId).build(), MediaType.APPLICATION_JSON_TYPE),
-				JsonObject.class, "dbs", "");
+		return operation(endpoint.path("/dbs"), null, null, "POST", null, Response.Status.CREATED,
+				Entity.entity(Json.createObjectBuilder().add("id", databaseId).build(), MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "dbs", "");
 	}
 
 	public JsonObject getDatabase(String dbResourceId) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s", dbResourceId)), null, null, "GET", Response.Status.OK, null, JsonObject.class, "dbs", dbResourceId);
+		return getDatabase(dbResourceId, null);
+	}
+
+	public JsonObject getDatabase(String dbResourceId, ETag etag) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s", dbResourceId)), null, null, "GET", etag, Response.Status.OK, null, JsonObject.class, "dbs", dbResourceId);
 	}
 
 	public JsonObject listDatabases() throws WebApplicationException {
-		return operation(endpoint.path("/dbs"), null, null, "GET", Response.Status.OK, null, JsonObject.class, "dbs", "");
+		return operation(endpoint.path("/dbs"), null, null, "GET", null, Response.Status.OK, null, JsonObject.class, "dbs", "");
 	}
 
 	public void deleteDatabase(String dbResourceId) throws WebApplicationException {
-		operation(endpoint.path(String.format("/dbs/%s", dbResourceId)), null, null, "DELETE", Response.Status.NO_CONTENT, null, null, "dbs", dbResourceId);
+		deleteDatabase(dbResourceId, null);
+	}
+
+	public void deleteDatabase(String dbResourceId, ETag etag) throws WebApplicationException {
+		operation(endpoint.path(String.format("/dbs/%s", dbResourceId)), null, null, "DELETE", etag, Response.Status.NO_CONTENT, null, null, "dbs", dbResourceId);
 	}
 
 	public JsonObject createCollection(String dbResourceId, String collectionId) throws WebApplicationException {
@@ -137,12 +174,12 @@ public class DocumentDB {
 		if (indexingPolicy != null) {
 			builder.add("IndexingPolicy", indexingPolicy);
 		}
-		return operation(endpoint.path(String.format("/dbs/%s/colls/", dbResourceId)), null, null, "POST", Response.Status.CREATED, Entity.entity(builder.build(), MediaType.APPLICATION_JSON_TYPE),
-				JsonObject.class, "colls", dbResourceId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/", dbResourceId)), null, null, "POST", null, Response.Status.CREATED,
+				Entity.entity(builder.build(), MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "colls", dbResourceId);
 	}
 
 	public JsonObject listCollections(String dbResourceId) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/", dbResourceId)), null, null, "GET", Response.Status.OK, null, JsonObject.class, "colls", dbResourceId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/", dbResourceId)), null, null, "GET", null, Response.Status.OK, null, JsonObject.class, "colls", dbResourceId);
 	}
 
 	public static class IndexRequestHelper implements RequestHandler {
@@ -164,30 +201,43 @@ public class DocumentDB {
 
 	public <S, R> R createDocument(String dbResourceId, String collectionResId, S document, Class<R> responseType, IndexDirective indexDirective) throws WebApplicationException {
 
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new IndexRequestHelper(indexDirective), null, "POST", Response.Status.CREATED,
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new IndexRequestHelper(indexDirective), null, "POST", null, Response.Status.CREATED,
 				Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), responseType, "docs", collectionResId);
 
 	}
 
 	public <R> R listDocuments(String dbResourceId, String collectionResId, Class<R> responseType) throws WebApplicationException {
 		WebTarget target = endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId));
-		return operation(target, null, null, "GET", Response.Status.OK, Entity.entity(null, MediaType.WILDCARD_TYPE), responseType, "docs", collectionResId);
+		return operation(target, null, null, "GET", null, Response.Status.OK, null, responseType, "docs", collectionResId);
 	}
 
 	public <S> S getDocument(String dbResourceId, String collectionResId, String documentResId, Class<S> responseType) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "GET", Response.Status.OK,
-				Entity.entity(null, MediaType.WILDCARD_TYPE), responseType, "docs", documentResId);
+		return getDocument(dbResourceId, collectionResId, documentResId, null, responseType);
+	}
+
+	public <S> S getDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag, Class<S> responseType) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "GET", etag, Response.Status.OK,
+				null, responseType, "docs", documentResId);
 	}
 
 	public <S, R> R replaceDocument(String dbResourceId, String collectionResId, String documentResId, S document, Class<R> responseType, IndexDirective indexDirective) throws WebApplicationException {
+		return replaceDocument(dbResourceId, collectionResId, documentResId, null, document, responseType, indexDirective);
+	}
 
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), new IndexRequestHelper(indexDirective), null, "PUT",
+	public <S, R> R replaceDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag, S document, Class<R> responseType, IndexDirective indexDirective)
+			throws WebApplicationException {
+
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), new IndexRequestHelper(indexDirective), null, "PUT", etag,
 				Response.Status.OK, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), responseType, "docs", documentResId);
 	}
 
 	public void deleteDocument(String dbResourceId, String collectionResId, String documentResId) throws WebApplicationException {
-		operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "DELETE", Response.Status.NO_CONTENT,
-				Entity.entity(null, MediaType.WILDCARD_TYPE), JsonObject.class, "docs", documentResId);
+		deleteDocument(dbResourceId, collectionResId, documentResId, null);
+	}
+
+	public void deleteDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag) throws WebApplicationException {
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "DELETE", etag, Response.Status.NO_CONTENT,
+				null, JsonObject.class, "docs", documentResId);
 	}
 
 	public static class QueryRequest implements RequestHandler {
@@ -242,18 +292,7 @@ public class DocumentDB {
 		public void setContinuation(String continuation);
 
 	}
-
-	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Class<R> responseType, int pageSize, String continuationToken) throws WebApplicationException {
-		QueryResponse qresponse = new QueryResponse();
-		R result = operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new QueryRequest(pageSize, continuationToken), qresponse, "POST",
-				Response.Status.OK, Entity.entity(query, "application/sql"), responseType, "docs", collectionResId);
-		if (result instanceof QueryResult) {
-			QueryResult qResult = (QueryResult) result;
-			qResult.setContinuation(qresponse.getContinuationToken());
-		}
-		return result;
-	}
-
+	
 	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, Class<R> responseType, int pageSize, String continuationToken)
 			throws WebApplicationException {
 		QueryResponse qresponse = new QueryResponse();
@@ -264,7 +303,7 @@ public class DocumentDB {
 			}
 		}
 		JsonObject queryObject = Json.createObjectBuilder().add("query", query).add("parameters", paramBuilder).build();
-		R result = operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new QueryRequest(pageSize, continuationToken), qresponse, "POST",
+		R result = operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new QueryRequest(pageSize, continuationToken), qresponse, "POST", null,
 				Response.Status.OK, Entity.entity(queryObject, "application/query+json"), responseType, "docs", collectionResId);
 		if (result instanceof QueryResult) {
 			QueryResult qResult = (QueryResult) result;
@@ -304,27 +343,36 @@ public class DocumentDB {
 		}
 		JsonObject document = Json.createObjectBuilder().add("id", attachmentId).add("contentType", contentType).add("media", media).build();
 		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/", dbResourceId, collectionResId, documentResId)), new FileNameIndexRequestHelper(fileName, indexDirective),
-				null, "POST", Response.Status.CREATED, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments", documentResId);
+				null, "POST", null, Response.Status.CREATED, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments", documentResId);
 
 	}
 
 	public JsonObject listAttachments(String dbResourceId, String collectionResId, String documentResId) throws WebApplicationException {
 		WebTarget target = endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/", dbResourceId, collectionResId, documentResId));
-		return operation(target, null, null, "GET", Response.Status.OK, Entity.entity(null, MediaType.WILDCARD_TYPE), JsonObject.class, "attachments", documentResId);
+		return operation(target, null, null, "GET", null, Response.Status.OK, null, JsonObject.class, "attachments", documentResId);
 	}
 
 	public JsonObject getAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "GET",
-				Response.Status.OK, Entity.entity(null, MediaType.WILDCARD_TYPE), JsonObject.class, "attachments", attachmentResId);
+		return getAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, null);
+	}
+
+	public JsonObject getAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "GET", etag,
+				Response.Status.OK, null, JsonObject.class, "attachments", attachmentResId);
 	}
 
 	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, String attachmentId, String fileName, String contentType,
 			String media) throws WebApplicationException {
-		return replaceAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, attachmentId, fileName, contentType, media, null);
+		return replaceAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, null, attachmentId, fileName, contentType, media, null);
+	}
+
+	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag, String attachmentId, String fileName, String contentType,
+			String media) throws WebApplicationException {
+		return replaceAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, etag, attachmentId, fileName, contentType, media, null);
 
 	}
 
-	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, String attachmentId, String fileName, String contentType,
+	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag, String attachmentId, String fileName, String contentType,
 			String media, IndexDirective indexDirective) throws WebApplicationException {
 		if (attachmentId == null || contentType == null || media == null) {
 			throw new WebApplicationException(String.format("required attachment value missing: id: %s contentType: %s media: %s", attachmentId, contentType, media));
@@ -332,26 +380,31 @@ public class DocumentDB {
 		JsonObject document = Json.createObjectBuilder().add("id", attachmentId).add("contentType", contentType).add("media", media).build();
 
 		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), new FileNameIndexRequestHelper(
-				fileName, indexDirective), null, "PUT", Response.Status.OK, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments", attachmentResId);
+				fileName, indexDirective), null, "PUT", etag, Response.Status.OK, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments", attachmentResId);
 	}
 
 	public JsonObject deleteAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "DELETE",
-				Response.Status.NO_CONTENT, Entity.entity(null, MediaType.WILDCARD_TYPE), JsonObject.class, "attachments", attachmentResId);
+		return deleteAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, null);
 	}
 
-	public <S, R> R operation(WebTarget target, RequestHandler reqHandler, ResponseHandler resHandler, String method, Response.Status expectedStatus, Entity<S> body, Class<R> responseType,
+	public JsonObject deleteAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "DELETE", etag,
+				Response.Status.NO_CONTENT, null, JsonObject.class, "attachments", attachmentResId);
+	}
+
+	public <S, R> R operation(WebTarget target, RequestHandler reqHandler, ResponseHandler resHandler, String method, ETag etag, Response.Status expectedStatus, Entity<S> body, Class<R> responseType,
 			String resourceType, String resourceId) throws WebApplicationException {
 
 		String path = target.getUri().getPath();
 		Builder builder = target.request();
-		setHeaders(builder, path, method, resourceType, resourceId);
+		setHeaders(builder, path, method, resourceType, resourceId, etag);
 		if (reqHandler != null) {
 			reqHandler.handle(builder);
 		}
 		Response response = builder.method(method, body);
 
-		if (expectedStatus != null && response.getStatusInfo().getStatusCode() != expectedStatus.getStatusCode()) {
+		if (expectedStatus != null && response.getStatusInfo().getStatusCode() != expectedStatus.getStatusCode()
+				&& !(etag != null && response.getStatusInfo().getStatusCode() != Response.Status.NOT_MODIFIED.getStatusCode())) {
 			throw new WebApplicationException(response);
 		}
 
@@ -394,13 +447,23 @@ public class DocumentDB {
 
 	}
 
-	public Builder setHeaders(Builder builder, String path, String verb, String resourceType, String resourceId) throws WebApplicationException {
+	public Builder setHeaders(Builder builder, String path, String verb, String resourceType, String resourceId, ETag etag) throws WebApplicationException {
 		try {
 			ZonedDateTime currentTime = ZonedDateTime.now(ZoneId.of("GMT"));
 			String date = RFC1123_DATE_TIME.format(currentTime);
 			builder.header("x-ms-date", date);
 			builder.header("x-ms-version", AZURE_DOCUMENTDB_VERSION);
 			builder.accept(MediaType.APPLICATION_JSON_TYPE);
+			if (etag != null) {
+				switch (etag.getMode()) {
+				case MATCH:
+					builder.header(HttpHeaders.IF_MATCH, etag.value);
+					break;
+				case NO_MATCH:
+					builder.header(HttpHeaders.IF_NONE_MATCH, etag.value);
+					break;
+				}
+			}
 			String stringToSign = String.format("%s\n%s\n%s\n%s\n%s\n", verb, resourceType, resourceId, date, "").toLowerCase();
 			Mac sha256_HMAC = Mac.getInstance("HMACSHA256");
 			SecretKeySpec secret_key = new SecretKeySpec(Base64.getDecoder().decode(masterKey), "HmacSHA256");

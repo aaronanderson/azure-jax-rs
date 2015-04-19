@@ -10,7 +10,8 @@
 	  <properties>
                <project.build.sourceEncoding>UTF-8</project.build.sourceEncodi
                <jersey.version>2.16</jersey.version>
-               <jackson.version>2.3.2</jackson.version>
+               <resteasy.version>3.0.11.Final</resteasy.version>
+               <jackson.version>2.4.1</jackson.version>
        </properties>
 
 
@@ -58,6 +59,9 @@
 			<scope>provided</scope>
 		</dependency>
  	-->
+		<!-- Testing -->
+ 	
+ 	<!-- 
 		<dependency>
 			<groupId>org.glassfish.jersey.core</groupId>
 			<artifactId>jersey-client</artifactId>
@@ -78,14 +82,30 @@
 			<version>${jersey.version}</version>
 			<scope>test</scope>
 		</dependency>
+ -->
 
+		
+									
 		<dependency>
-			<groupId>org.glassfish.jersey.media</groupId>
-			<artifactId>jersey-media-json-jackson</artifactId>
-			<version>${jersey.version}</version>
+			<groupId>org.jboss.resteasy</groupId>
+			<artifactId>resteasy-client</artifactId>
+			<version>${resteasy.version}</version>
 			<scope>test</scope>
 		</dependency>
 
+		<dependency>
+			<groupId>org.jboss.resteasy</groupId>
+			<artifactId>resteasy-json-p-provider</artifactId>
+			<version>${resteasy.version}</version>
+			<scope>test</scope>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.jboss.resteasy</groupId>
+			<artifactId>resteasy-jackson2-provider</artifactId>
+			<version>${resteasy.version}</version>
+			<scope>test</scope>
+		</dependency> 
 
 		<dependency>
 			<groupId>junit</groupId>
