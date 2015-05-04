@@ -2,26 +2,29 @@ package com.cpsgpartners.azure;
 
 import static org.junit.Assert.assertNotNull;
 
+import java.io.FileInputStream;
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Properties;
 
 import javax.json.Json;
+import javax.json.JsonArray;
 import javax.json.JsonObject;
 import javax.ws.rs.ProcessingException;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.ext.ContextResolver;
 
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.cpsgpartners.azure.documentdb.DocumentDB;
 import com.cpsgpartners.azure.documentdb.JQueryResult;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class DocumentDBTest {
-
-	public static final String MASTER_KEY = "";
-	public static final String CLIENT_ID = "";
+	private static String MASTER_KEY;
+	private static String CLIENT_ID;
 
 	/*
 	//@Test
@@ -125,9 +128,21 @@ public class DocumentDBTest {
 		}
 
 	}
-	
+
 	//A subclass is required due to JAX-RS read restriction to class type and java type erasure
 	public static class SerTestQuery extends JQueryResult<SerTest> {
+	}
+
+	@BeforeClass
+	public static void setUpBeforeClass() throws Exception {
+		String fileName = System.getProperty("cpsg.test.cfg.filename");
+		//System.out.format("Reading config file : %s\n", fileName);
+		Properties p = new Properties();
+		try (FileInputStream fis = new FileInputStream(fileName)) {
+			p.load(fis);
+			MASTER_KEY = p.getProperty("documentdb.masterkey");
+			CLIENT_ID = p.getProperty("documentdb.clientid");
+		}
 	}
 
 	@Test
@@ -135,6 +150,7 @@ public class DocumentDBTest {
 		DocumentDB documentDB = new DocumentDB(CLIENT_ID, MASTER_KEY, com.cpsgpartners.azure.documentdb.DocumentDB.ConsistencyLevel.Session, ObjectMapperContextResolver.class);
 		String dbResId = null;
 		try {
+
 			JsonObject documentDb = documentDB.createDatabase("TestDB");
 			//System.out.format("Create Database %s\n", documentDb);
 			assertNotNull(documentDB);
@@ -151,6 +167,7 @@ public class DocumentDBTest {
 			JsonObject collection = documentDB.createCollection(documentDb.getString("_rid"), "TestCollectionID");
 			//System.out.format("Create Collection %s\n", collection);
 			assertNotNull(collection);
+			
 
 			JsonObject collectionList = documentDB.listCollections(documentDb.getString("_rid"));
 			//System.out.format("List Collection %s\n", collectionList);
@@ -193,13 +210,14 @@ public class DocumentDBTest {
 			//System.out.format("Query Documents\n");
 			//System.out.format("%s\n", documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", String.class, -1, null));
 
-			SerTestQuery qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", SerTestQuery.class, -1, null);
+			SerTestQuery qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String,String>(),SerTestQuery.class, -1, null);
 			assertNotNull(qResult);
 
 			/*for (SerTest qdoc : qResult.getDocuments()) {
 				System.out.format("\tQuery Result %s\n", qdoc.getId());
 			}*/
-
+			
+			
 			JsonObject attachment = documentDB.createAttachment(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), "TestAttachmentID", "text.txt", "text/plain",
 					"https://azure/test.txt");
 			//System.out.format("Create Attachment %s\n", attachment);
@@ -223,6 +241,30 @@ public class DocumentDBTest {
 
 			documentDB.deleteDocument(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"));
 			//System.out.format("Delete Document %s\n", document.getString("id"));
+			 
+			 
+			StringBuilder spBody = new StringBuilder();
+			spBody.append("function (parm) {\n");
+			spBody.append("    var context = getContext();\n");
+			spBody.append("    var response = context.getResponse();\n");
+			spBody.append("    response.setBody({ id: \"Hello, World \" + parm });\n");
+			spBody.append("}\n");
+			JsonObject sproc = documentDB.createStoredProcedure(documentDb.getString("_rid"), collection.getString("_rid"), "TestSP", spBody.toString());
+			//System.out.format("Create Stored Procedure %s\n", sproc);
+			assertNotNull(sproc);
+
+			JsonObject sprocList = documentDB.listStoredProcedures(documentDb.getString("_rid"), collection.getString("_rid"));
+			//System.out.format("Stored Procedure List %s\n", sprocList);
+			assertNotNull(sprocList);
+
+			sproc = documentDB.replaceStoredProcedure(documentDb.getString("_rid"), collection.getString("_rid"), sproc.getString("_rid"), "TestSP", spBody.toString());
+			//System.out.format("Replace Stored Procedure %s\n", sproc);
+			assertNotNull(sproc);
+
+			JsonArray params = Json.createArrayBuilder().add("Client Value").build();
+			JsonObject sprocExec = documentDB.executeStoredProcedure(documentDb.getString("_rid"), collection.getString("_rid"), sproc.getString("_rid"), params, JsonObject.class);
+			//System.out.format("Exec Stored Procedure %s\n", sproc);
+			assertNotNull(sprocExec);
 
 			documentDB.deleteDatabase(documentDb.getString("_rid"));
 			//System.out.format("Delete Database\n");
@@ -233,11 +275,12 @@ public class DocumentDBTest {
 			String message = we.getMessage();
 			if (we.getResponse().hasEntity()) {
 				message = String.format("%s - %s", message, we.getResponse().readEntity(JsonObject.class));
+				we.printStackTrace();
 			}
-			/*try {
+			try {
 				documentDB.deleteDatabase(dbResId);
 			} catch (WebApplicationException e) {
-			}*/
+			}
 			org.junit.Assert.fail(message);
 		}
 

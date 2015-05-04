@@ -82,8 +82,8 @@ public class DocumentDB {
 		private final String collId;
 		private final String docId;
 
-		Id(String uri, String dbId, String collId, String docId) {
-			this.uri = uri;
+		Id(String dbId, String collId, String docId) {
+			this.uri = String.format("dbs/%s/colls/%s/docs/%s/", dbId, collId, docId);
 			this.dbId = dbId;
 			this.collId = collId;
 			this.docId = docId;
@@ -131,13 +131,13 @@ public class DocumentDB {
 	public static Id parse(String idURI) throws UriBuilderException {
 		Matcher m = DOCUMENTDB_URI_PATTERN.matcher(idURI);
 		if (m.matches()) {
-			return new Id(idURI, m.group(1) != null ? m.group(1) : "", m.group(3) != null ? m.group(3) : "", m.group(5) != null ? m.group(5) : "");
+			return new Id(m.group(1) != null ? m.group(1) : "", m.group(3) != null ? m.group(3) : "", m.group(5) != null ? m.group(5) : "");
 		}
 		throw new UriBuilderException(String.format("invalid format %s", idURI));
 	}
 
 	public static Id newDocumentId(Id collectionId, String documentId) throws UriBuilderException {
-		return new Id(collectionId.getURI() + "/docs/" + documentId, collectionId.getDbId(), collectionId.getCollId(), documentId);
+		return new Id(collectionId.getDbId(), collectionId.getCollId(), documentId);
 	}
 
 	public JsonObject createDatabase(String databaseId) throws WebApplicationException {
@@ -216,8 +216,8 @@ public class DocumentDB {
 	}
 
 	public <S> S getDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag, Class<S> responseType) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "GET", etag, Response.Status.OK,
-				null, responseType, "docs", documentResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "GET", etag, Response.Status.OK, null, responseType,
+				"docs", documentResId);
 	}
 
 	public <S, R> R replaceDocument(String dbResourceId, String collectionResId, String documentResId, S document, Class<R> responseType, IndexDirective indexDirective) throws WebApplicationException {
@@ -236,8 +236,8 @@ public class DocumentDB {
 	}
 
 	public void deleteDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag) throws WebApplicationException {
-		operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "DELETE", etag, Response.Status.NO_CONTENT,
-				null, JsonObject.class, "docs", documentResId);
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "DELETE", etag, Response.Status.NO_CONTENT, null,
+				JsonObject.class, "docs", documentResId);
 	}
 
 	public static class QueryRequest implements RequestHandler {
@@ -292,7 +292,7 @@ public class DocumentDB {
 		public void setContinuation(String continuation);
 
 	}
-	
+
 	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, Class<R> responseType, int pageSize, String continuationToken)
 			throws WebApplicationException {
 		QueryResponse qresponse = new QueryResponse();
@@ -390,6 +390,64 @@ public class DocumentDB {
 	public JsonObject deleteAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag) throws WebApplicationException {
 		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "DELETE", etag,
 				Response.Status.NO_CONTENT, null, JsonObject.class, "attachments", attachmentResId);
+	}
+
+	public JsonObject createStoredProcedure(String dbResourceId, String collectionResId, String spName, String spBody) throws WebApplicationException {
+		JsonObject storedProcedure = Json.createObjectBuilder().add("id", spName).add("body", spBody).build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/", dbResourceId, collectionResId)), null, null, "POST", null, Response.Status.CREATED,
+				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "sprocs", collectionResId);
+	}
+
+	public JsonObject replaceStoredProcedure(String dbResourceId, String collectionResId, String spResId, String spName, String spBody) throws WebApplicationException {
+		JsonObject storedProcedure = Json.createObjectBuilder().add("id", spName).add("body", spBody).build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "PUT", null, Response.Status.OK,
+				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "sprocs", spResId);
+	}
+
+	public JsonObject listStoredProcedures(String dbResourceId, String collectionResId) throws WebApplicationException {
+		WebTarget target = endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/", dbResourceId, collectionResId));
+		return operation(target, null, null, "GET", null, Response.Status.OK, null, JsonObject.class, "sprocs", collectionResId);
+	}
+
+	//TODO can also query sprocs i.e.  "select * from root r where r.id = \"sproc name\"
+
+	public <S, R> R executeStoredProcedure(String dbResourceId, String collectionResId, String spResId, S document, Class<R> responseType) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "POST", null, Response.Status.OK,
+				document != null ? Entity.entity(document, MediaType.APPLICATION_JSON_TYPE) : null, responseType, "sprocs", spResId);
+	}
+
+	public void deleteStoredProcedure(String dbResourceId, String collectionResId, String spResId) throws WebApplicationException {
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "DELETE", null, Response.Status.NO_CONTENT, null, null, "sprocs",
+				spResId);
+	}
+
+	public JsonObject createTrigger(String dbResourceId, String collectionResId, String triggerName, String triggerBody) throws WebApplicationException {
+		JsonObject storedProcedure = Json.createObjectBuilder().add("id", triggerName).add("body", triggerBody).build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/", dbResourceId, collectionResId)), null, null, "POST", null, Response.Status.CREATED,
+				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "triggers", collectionResId);
+	}
+
+	public JsonObject replaceTrigger(String dbResourceId, String collectionResId, String triggerResId, String triggerName, String triggerBody) throws WebApplicationException {
+		JsonObject storedProcedure = Json.createObjectBuilder().add("id", triggerName).add("body", triggerBody).build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "PUT", null, Response.Status.OK,
+				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "triggers", triggerResId);
+	}
+
+	public JsonObject listTrigger(String dbResourceId, String collectionResId) throws WebApplicationException {
+		WebTarget target = endpoint.path(String.format("/dbs/%s/colls/%s/triggers/", dbResourceId, collectionResId));
+		return operation(target, null, null, "GET", null, Response.Status.OK, null, JsonObject.class, "triggers", collectionResId);
+	}
+
+	//TODO can also query sprocs i.e.  "select * from root r where r.id = \"sproc name\"
+
+	public <S, R> R executeTrigger(String dbResourceId, String collectionResId, String triggerResId, S document, Class<R> responseType) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "POST", null, Response.Status.OK,
+				document != null ? Entity.entity(document, MediaType.APPLICATION_JSON_TYPE) : null, responseType, "triggers", triggerResId);
+	}
+
+	public void deleteTrigger(String dbResourceId, String collectionResId, String triggerResId) throws WebApplicationException {
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "DELETE", null, Response.Status.NO_CONTENT, null, null,
+				"triggers", triggerResId);
 	}
 
 	public <S, R> R operation(WebTarget target, RequestHandler reqHandler, ResponseHandler resHandler, String method, ETag etag, Response.Status expectedStatus, Entity<S> body, Class<R> responseType,
