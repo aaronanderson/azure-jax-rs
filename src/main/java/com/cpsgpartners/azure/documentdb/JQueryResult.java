@@ -56,7 +56,7 @@ public class JQueryResult<R> implements QueryResult<R> {
 		this.continuation = continuation;
 	}
 
-	public static final <T> GenericType<JQueryResult<T>> genericType(Class<T> type) {
+	public static <T> GenericType<JQueryResult<T>> genericType(Class<T> type) {
 		return new GenericType<JQueryResult<T>>(new JQueryResultParameterizedType(type));
 	}
 
@@ -69,8 +69,7 @@ public class JQueryResult<R> implements QueryResult<R> {
 
 		@Override
 		public Type[] getActualTypeArguments() {
-			// TODO Auto-generated method stub
-			return null;
+			return type;
 		}
 
 		@Override
@@ -80,7 +79,7 @@ public class JQueryResult<R> implements QueryResult<R> {
 
 		@Override
 		public Type getOwnerType() {
-			return JQueryResult.class;
+			return null;
 		}
 
 	}

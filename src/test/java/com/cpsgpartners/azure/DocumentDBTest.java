@@ -131,7 +131,6 @@ public class DocumentDBTest {
 
 	}
 
-
 	@BeforeClass
 	public static void setUpBeforeClass() throws Exception {
 		String fileName = System.getProperty("cpsg.test.cfg.filename");
@@ -166,7 +165,6 @@ public class DocumentDBTest {
 			JsonObject collection = documentDB.createCollection(documentDb.getString("_rid"), "TestCollectionID");
 			//System.out.format("Create Collection %s\n", collection);
 			assertNotNull(collection);
-			
 
 			JsonObject collectionList = documentDB.listCollections(documentDb.getString("_rid"));
 			//System.out.format("List Collection %s\n", collectionList);
@@ -208,14 +206,14 @@ public class DocumentDBTest {
 
 			//System.out.format("Query Documents\n");
 			//System.out.format("%s\n", documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", String.class, -1, null));
-			QueryResult<SerTest> qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String,String>(),JQueryResult.genericType(SerTest.class), -1, null);
+			QueryResult<SerTest> qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String, String>(),
+					JQueryResult.genericType(SerTest.class), -1, null);
 			assertNotNull(qResult);
 
 			/*for (SerTest qdoc : qResult.getDocuments()) {
 				System.out.format("\tQuery Result %s\n", qdoc.getId());
 			}*/
-			
-			
+
 			JsonObject attachment = documentDB.createAttachment(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), "TestAttachmentID", "text.txt", "text/plain",
 					"https://azure/test.txt");
 			//System.out.format("Create Attachment %s\n", attachment);
@@ -239,8 +237,7 @@ public class DocumentDBTest {
 
 			documentDB.deleteDocument(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"));
 			//System.out.format("Delete Document %s\n", document.getString("id"));
-			 
-			 
+
 			StringBuilder spBody = new StringBuilder();
 			spBody.append("function (parm) {\n");
 			spBody.append("    var context = getContext();\n");
