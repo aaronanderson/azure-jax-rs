@@ -26,6 +26,7 @@ import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation.Builder;
 import javax.ws.rs.client.WebTarget;
+import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -42,7 +43,7 @@ public class DocumentDB {
 	//DateTimeFormatter.RFC_1123_DATE_TIME does not pad the date as required by Azure
 	public static final DateTimeFormatter RFC1123_DATE_TIME = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z");
 
-	public static Pattern DOCUMENTDB_URI_PATTERN = Pattern.compile("dbs\\/([^\\/]+)\\/(colls\\/([^\\/]+)\\/)?(docs\\/([^\\/]+)\\/)?");
+	public static Pattern DOCUMENTDB_URI_PATTERN = Pattern.compile("dbs\\/([^\\/]+)\\/(colls\\/([^\\/]+)\\/)?(([^\\/]+)\\/([^\\/]+)\\/)?");
 
 	public static enum ConsistencyLevel {
 		Strong, Bounded, Session, Eventual;
@@ -80,13 +81,25 @@ public class DocumentDB {
 		private final String uri;
 		private final String dbId;
 		private final String collId;
-		private final String docId;
+		private final String resType;
+		private final String resId;
 
-		Id(String dbId, String collId, String docId) {
-			this.uri = String.format("dbs/%s/colls/%s/docs/%s/", dbId, collId, docId);
+		Id(String dbId, String collId, String resType, String resId) {
 			this.dbId = dbId;
 			this.collId = collId;
-			this.docId = docId;
+			this.resType = resType;
+			this.resId = resId;
+			StringBuilder sb = new StringBuilder();
+			if (dbId != null && !dbId.isEmpty()) {
+				sb.append("dbs").append("/").append(dbId).append("/");
+			}
+			if (collId != null && !collId.isEmpty()) {
+				sb.append("colls").append("/").append(collId).append("/");
+			}
+			if (resType != null && !resType.isEmpty() && resId != null && !resId.isEmpty()) {
+				sb.append(resType).append("/").append(resId).append("/");
+			}
+			this.uri = sb.toString();
 		}
 
 		public String getURI() {
@@ -101,8 +114,12 @@ public class DocumentDB {
 			return collId;
 		}
 
-		public String getDocId() {
-			return docId;
+		public String getResType() {
+			return resType;
+		}
+
+		public String getResId() {
+			return resId;
 		}
 
 	}
@@ -131,13 +148,13 @@ public class DocumentDB {
 	public static Id parse(String idURI) throws UriBuilderException {
 		Matcher m = DOCUMENTDB_URI_PATTERN.matcher(idURI);
 		if (m.matches()) {
-			return new Id(m.group(1) != null ? m.group(1) : "", m.group(3) != null ? m.group(3) : "", m.group(5) != null ? m.group(5) : "");
+			return new Id(m.group(1) != null ? m.group(1) : "", m.group(3) != null ? m.group(3) : "", m.group(5) != null ? m.group(5) : "", m.group(6) != null ? m.group(6) : "");
 		}
 		throw new UriBuilderException(String.format("invalid format %s", idURI));
 	}
 
 	public static Id newDocumentId(Id collectionId, String documentId) throws UriBuilderException {
-		return new Id(collectionId.getDbId(), collectionId.getCollId(), documentId);
+		return new Id(collectionId.getDbId(), collectionId.getCollId(), "docs", documentId);
 	}
 
 	public JsonObject createDatabase(String databaseId) throws WebApplicationException {
@@ -293,7 +310,7 @@ public class DocumentDB {
 
 	}
 
-	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, Class<R> responseType, int pageSize, String continuationToken)
+	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, Object responseType, int pageSize, String continuationToken)
 			throws WebApplicationException {
 		QueryResponse qresponse = new QueryResponse();
 		JsonArrayBuilder paramBuilder = Json.createArrayBuilder();
@@ -450,7 +467,7 @@ public class DocumentDB {
 				"triggers", triggerResId);
 	}
 
-	public <S, R> R operation(WebTarget target, RequestHandler reqHandler, ResponseHandler resHandler, String method, ETag etag, Response.Status expectedStatus, Entity<S> body, Class<R> responseType,
+	public <S, R> R operation(WebTarget target, RequestHandler reqHandler, ResponseHandler resHandler, String method, ETag etag, Response.Status expectedStatus, Entity<S> body, Object responseType,
 			String resourceType, String resourceId) throws WebApplicationException {
 
 		String path = target.getUri().getPath();
@@ -477,12 +494,18 @@ public class DocumentDB {
 		}
 
 		if (responseType != null) {
-			Class<R> responseTypeClass = (Class<R>) responseType;
-			if (responseTypeClass.isAssignableFrom(Response.class)) {
-				return (R) response;
-			}
-			if (response.hasEntity()) {
-				R entity = response.readEntity(responseTypeClass);
+			if (responseType instanceof Class) {
+				Class<R> responseTypeClass = (Class<R>) responseType;
+				if (responseTypeClass.isAssignableFrom(Response.class)) {
+					return (R) response;
+				}
+				if (response.hasEntity()) {
+					R entity = response.readEntity(responseTypeClass);
+					response.close();
+					return entity;
+				}
+			} else if (responseType instanceof GenericType && response.hasEntity()) {
+				R entity = response.readEntity((GenericType<R>) responseType);
 				response.close();
 				return entity;
 			}

@@ -12,12 +12,14 @@ import javax.json.JsonArray;
 import javax.json.JsonObject;
 import javax.ws.rs.ProcessingException;
 import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.GenericType;
 import javax.ws.rs.ext.ContextResolver;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.cpsgpartners.azure.documentdb.DocumentDB;
+import com.cpsgpartners.azure.documentdb.DocumentDB.QueryResult;
 import com.cpsgpartners.azure.documentdb.JQueryResult;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -129,9 +131,6 @@ public class DocumentDBTest {
 
 	}
 
-	//A subclass is required due to JAX-RS read restriction to class type and java type erasure
-	public static class SerTestQuery extends JQueryResult<SerTest> {
-	}
 
 	@BeforeClass
 	public static void setUpBeforeClass() throws Exception {
@@ -209,8 +208,9 @@ public class DocumentDBTest {
 
 			//System.out.format("Query Documents\n");
 			//System.out.format("%s\n", documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", String.class, -1, null));
-
-			SerTestQuery qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String,String>(),SerTestQuery.class, -1, null);
+			GenericType<JQueryResult<SerTest>> entity = new GenericType<JQueryResult<SerTest>>() {
+			};
+			QueryResult<SerTest> qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String,String>(),entity, -1, null);
 			assertNotNull(qResult);
 
 			/*for (SerTest qdoc : qResult.getDocuments()) {
