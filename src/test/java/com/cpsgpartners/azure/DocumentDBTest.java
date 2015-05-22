@@ -208,9 +208,7 @@ public class DocumentDBTest {
 
 			//System.out.format("Query Documents\n");
 			//System.out.format("%s\n", documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", String.class, -1, null));
-			GenericType<JQueryResult<SerTest>> entity = new GenericType<JQueryResult<SerTest>>() {
-			};
-			QueryResult<SerTest> qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String,String>(),entity, -1, null);
+			QueryResult<SerTest> qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String,String>(),JQueryResult.genericType(SerTest.class), -1, null);
 			assertNotNull(qResult);
 
 			/*for (SerTest qdoc : qResult.getDocuments()) {
