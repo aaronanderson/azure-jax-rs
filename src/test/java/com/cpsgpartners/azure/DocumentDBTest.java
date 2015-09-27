@@ -5,6 +5,7 @@ import static org.junit.Assert.assertNotNull;
 import java.io.FileInputStream;
 import java.io.Serializable;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 import javax.json.Json;
@@ -12,7 +13,6 @@ import javax.json.JsonArray;
 import javax.json.JsonObject;
 import javax.ws.rs.ProcessingException;
 import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.GenericType;
 import javax.ws.rs.ext.ContextResolver;
 
 import org.junit.BeforeClass;
@@ -39,48 +39,48 @@ public class DocumentDBTest {
 	PropertyConfigurator.configure(props);
 	
 		System.setProperty("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.SimpleLog");
-
+	
 		System.setProperty("org.apache.commons.logging.simplelog.showdatetime", "true");
-
+	
 		System.setProperty("org.apache.commons.logging.simplelog.log.httpclient.wire.header", "debug");
-
+	
 		System.setProperty("org.apache.commons.logging.simplelog.log.org.apache.commons.httpclient", "debug");
-
+	
 		DocumentClient documentClient = new DocumentClient("https://cpsgpartners.documents.azure.com", MASTER_KEY, ConnectionPolicy.GetDefault(), ConsistencyLevel.Session);
-
+	
 		// Define a new database using the id above.
 		Database myDatabase = new Database();
 		myDatabase.setId("junitDB");
-
+	
 		// Create a new database.
 		myDatabase = documentClient.createDatabase(myDatabase, null).getResource();
-
+	
 		// Define a new collection using the id above.
 		DocumentCollection myCollection = new DocumentCollection();
 		myCollection.setId("TestCollectionID");
-
+	
 		// Create a new collection.
 		//myCollection = documentClient.createCollection(myDatabase.getSelfLink(), myCollection, null).getResource();
 		myCollection = documentClient.createCollection(myDatabase.getSelfLink(), myCollection, null).getResource();
-
+	
 		JsonObject jobj = Json.createObjectBuilder().add("foo", "bar").build();
 		Document myDocument = new Document(jobj.toString());
-
+	
 		// Create a new document.
 		myDocument = documentClient.createDocument(myCollection.getSelfLink(), myDocument, null, false).getResource();
-
+	
 		FeedOptions fo = new FeedOptions();
 		fo.setPageSize(30);
 		documentClient.readDocuments(myCollection.getSelfLink(), fo);
-
+	
 		FeedResponse<Document> res = documentClient.queryDocuments(myCollection.getSelfLink(), "SELECT * FROM c", fo);
 		for (Document doc : res.getQueryIterable()) {
 			System.out.println(doc.toString());
 		}
 		RequestOptions ro = new RequestOptions();
-
+	
 		documentClient.deleteDatabase(myDatabase.getSelfLink(), ro);
-
+	
 	}*/
 
 	public static class ObjectMapperContextResolver implements ContextResolver<ObjectMapper> {
@@ -206,16 +206,14 @@ public class DocumentDBTest {
 
 			//System.out.format("Query Documents\n");
 			//System.out.format("%s\n", documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", String.class, -1, null));
-			QueryResult<SerTest> qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String, String>(),
-					JQueryResult.genericType(SerTest.class), -1, null);
+			QueryResult<SerTest> qResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT * FROM c", new HashMap<String, String>(), JQueryResult.genericType(SerTest.class), -1, null);
 			assertNotNull(qResult);
 
 			/*for (SerTest qdoc : qResult.getDocuments()) {
 				System.out.format("\tQuery Result %s\n", qdoc.getId());
 			}*/
-
-			JsonObject attachment = documentDB.createAttachment(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), "TestAttachmentID", "text.txt", "text/plain",
-					"https://azure/test.txt");
+			JsonObject extraData = Json.createObjectBuilder().add("CustomKey", "CustomValue").build();
+			JsonObject attachment = documentDB.createAttachment(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), "TestAttachmentID", "text.txt", "text/plain", "https://azure/test.txt", extraData);
 			//System.out.format("Create Attachment %s\n", attachment);
 			assertNotNull(attachment);
 
@@ -223,8 +221,7 @@ public class DocumentDBTest {
 			//System.out.format("List Attachments %s\n", attachementList);
 			assertNotNull(attachementList);
 
-			attachment = documentDB.replaceAttachment(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), attachment.getString("_rid"), "text.txt",
-					"TestAttachmentID", "text/plain", "https://azure/test.txt");
+			attachment = documentDB.replaceAttachment(documentDb.getString("_rid"), collection.getString("_rid"), document.getString("_rid"), attachment.getString("_rid"), "text.txt", "TestAttachmentID", "text/plain", "https://azure/test.txt",extraData);
 			//System.out.format("Replace Attachment %s\n", attachment);
 			assertNotNull(attachment);
 
@@ -260,6 +257,26 @@ public class DocumentDBTest {
 			JsonObject sprocExec = documentDB.executeStoredProcedure(documentDb.getString("_rid"), collection.getString("_rid"), sproc.getString("_rid"), params, JsonObject.class);
 			//System.out.format("Exec Stored Procedure %s\n", sproc);
 			assertNotNull(sprocExec);
+
+			StringBuilder udfBody = new StringBuilder();
+			udfBody.append("function (parm) {\n");
+			udfBody.append("    return parm; \n");
+			udfBody.append("}\n");
+			JsonObject udf = documentDB.createUDF(documentDb.getString("_rid"), collection.getString("_rid"), "testUDF", udfBody.toString());
+			//System.out.format("Create UDF %s\n", udf);
+			assertNotNull(udf);
+
+			JsonObject udfList = documentDB.listUDFs(documentDb.getString("_rid"), collection.getString("_rid"));
+			//System.out.format("User Defined Function List %s\n", udfList);
+			assertNotNull(udfList);
+
+			udf = documentDB.replaceUDF(documentDb.getString("_rid"), collection.getString("_rid"), udf.getString("_rid"), "testUDF", udfBody.toString());
+			//System.out.format("Replace Stored Procedure %s\n", udf);
+			assertNotNull(udf);
+
+			JsonObject udfResult = documentDB.queryDocuments(documentDb.getString("_rid"), collection.getString("_rid"), "SELECT udf.testUDF('Test')", new HashMap<String, String>(), JsonObject.class, -1, null);
+			//System.out.format("Exec UDF %s\n", udfResult);
+			assertNotNull(udfResult);
 
 			documentDB.deleteDatabase(documentDb.getString("_rid"));
 			//System.out.format("Delete Database\n");

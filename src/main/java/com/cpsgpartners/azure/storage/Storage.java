@@ -118,12 +118,16 @@ public class Storage {
 		operation(endpoint.path(containerName).path(blobName), "PUT", headers, Response.Status.CREATED, Entity.entity(blob.content, blob.contentType), null);
 	}
 
+	public void deleteBlob(String containerName, String blobName) throws WebApplicationException {
+		operation(endpoint.path(containerName).path(blobName), "DELETE", null, Response.Status.ACCEPTED, null, Response.class);
+	}
+
 	//TODO possibly specify last modified header
 	public BlobFile getBlob(String containerName, String blobName) throws WebApplicationException {
 		return new BlobFile(operation(endpoint.path(containerName).path(blobName), "GET", null, Response.Status.OK, null, Response.class));
 	}
 
-	public String sharedAccessURL(String containerName, String blobName, String permissions, ZonedDateTime startTime, Duration expiryDuration, boolean longFormat) {
+	public String sharedAccessURL(String containerName, String blobName, String permissions, ZonedDateTime startTime, Duration expiryDuration, boolean longFormat) throws WebApplicationException{
 
 		String signedResource = "c";
 		UriBuilder request = endpoint.path(containerName).getUriBuilder();
@@ -180,11 +184,10 @@ public class Storage {
 			throw new WebApplicationException(e);
 		}
 
-		return request.toString();
+		return request.build().toString();
 	}
 
-	public <T> T operation(WebTarget target, String method, MultivaluedMap<String, Object> headers, Response.Status expectedStatus, Entity<?> requestContent, Class<T> responseType)
-			throws WebApplicationException {
+	public <T> T operation(WebTarget target, String method, MultivaluedMap<String, Object> headers, Response.Status expectedStatus, Entity<?> requestContent, Class<T> responseType) throws WebApplicationException {
 		Builder builder = target.request();
 		if (headers == null) {
 			headers = new MultivaluedHashMap<String, Object>();

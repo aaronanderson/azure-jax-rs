@@ -10,6 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.WeakHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,6 +21,7 @@ import javax.json.Json;
 import javax.json.JsonArrayBuilder;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
+import javax.json.JsonValue;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
@@ -43,7 +45,7 @@ public class DocumentDB {
 	//DateTimeFormatter.RFC_1123_DATE_TIME does not pad the date as required by Azure
 	public static final DateTimeFormatter RFC1123_DATE_TIME = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z");
 
-	public static Pattern DOCUMENTDB_URI_PATTERN = Pattern.compile("dbs\\/([^\\/]+)\\/(colls\\/([^\\/]+)\\/)?(([^\\/]+)\\/([^\\/]+)\\/)?");
+	public static Pattern DOCUMENTDB_URI_PATTERN = Pattern.compile("dbs\\/([^\\/]+)\\/(colls\\/([^\\/]+)\\/)?(([^\\/]+)\\/([^\\/]+)\\/)?(attachments\\/([^\\/]+)\\/?)?");
 
 	public static enum ConsistencyLevel {
 		Strong, Bounded, Session, Eventual;
@@ -83,12 +85,19 @@ public class DocumentDB {
 		private final String collId;
 		private final String resType;
 		private final String resId;
+		private final String attId;
 
 		Id(String dbId, String collId, String resType, String resId) {
+			this(dbId, collId, resType, resId, null);
+		}
+
+		Id(String dbId, String collId, String resType, String resId, String attId) {
 			this.dbId = dbId;
 			this.collId = collId;
 			this.resType = resType;
 			this.resId = resId;
+			this.attId=attId;
+			
 			StringBuilder sb = new StringBuilder();
 			if (dbId != null && !dbId.isEmpty()) {
 				sb.append("dbs").append("/").append(dbId).append("/");
@@ -98,6 +107,9 @@ public class DocumentDB {
 			}
 			if (resType != null && !resType.isEmpty() && resId != null && !resId.isEmpty()) {
 				sb.append(resType).append("/").append(resId).append("/");
+			}
+			if (attId != null && !attId.isEmpty()) {
+				sb.append("attachments").append("/").append(attId).append("/");
 			}
 			this.uri = sb.toString();
 		}
@@ -122,6 +134,10 @@ public class DocumentDB {
 			return resId;
 		}
 
+		public String getAttId() {
+			return attId;
+		}
+				
 	}
 
 	//private final String id;
@@ -148,18 +164,19 @@ public class DocumentDB {
 	public static Id parse(String idURI) throws UriBuilderException {
 		Matcher m = DOCUMENTDB_URI_PATTERN.matcher(idURI);
 		if (m.matches()) {
-			return new Id(m.group(1) != null ? m.group(1) : "", m.group(3) != null ? m.group(3) : "", m.group(5) != null ? m.group(5) : "", m.group(6) != null ? m.group(6) : "");
+			return new Id(m.group(1) != null ? m.group(1) : "", m.group(3) != null ? m.group(3) : "", m.group(5) != null ? m.group(5) : "", m.group(6) != null ? m.group(6) : "", m.group(8) != null ? m.group(8) : "");
 		}
-		throw new UriBuilderException(String.format("invalid format %s", idURI));
+		throw new UriBuilderException(String.format("invalid ID format %s", idURI));
 	}
 
 	public static Id newDocumentId(Id collectionId, String documentId) throws UriBuilderException {
 		return new Id(collectionId.getDbId(), collectionId.getCollId(), "docs", documentId);
 	}
+	
+	
 
 	public JsonObject createDatabase(String databaseId) throws WebApplicationException {
-		return operation(endpoint.path("/dbs"), null, null, "POST", null, Response.Status.CREATED,
-				Entity.entity(Json.createObjectBuilder().add("id", databaseId).build(), MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "dbs", "");
+		return operation(endpoint.path("/dbs"), null, null, "POST", null, Response.Status.CREATED, Entity.entity(Json.createObjectBuilder().add("id", databaseId).build(), MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "dbs", "");
 	}
 
 	public JsonObject getDatabase(String dbResourceId) throws WebApplicationException {
@@ -191,8 +208,7 @@ public class DocumentDB {
 		if (indexingPolicy != null) {
 			builder.add("IndexingPolicy", indexingPolicy);
 		}
-		return operation(endpoint.path(String.format("/dbs/%s/colls/", dbResourceId)), null, null, "POST", null, Response.Status.CREATED,
-				Entity.entity(builder.build(), MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "colls", dbResourceId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/", dbResourceId)), null, null, "POST", null, Response.Status.CREATED, Entity.entity(builder.build(), MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "colls", dbResourceId);
 	}
 
 	public JsonObject listCollections(String dbResourceId) throws WebApplicationException {
@@ -218,8 +234,7 @@ public class DocumentDB {
 
 	public <S, R> R createDocument(String dbResourceId, String collectionResId, S document, Class<R> responseType, IndexDirective indexDirective) throws WebApplicationException {
 
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new IndexRequestHelper(indexDirective), null, "POST", null, Response.Status.CREATED,
-				Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), responseType, "docs", collectionResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new IndexRequestHelper(indexDirective), null, "POST", null, Response.Status.CREATED, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), responseType, "docs", collectionResId);
 
 	}
 
@@ -233,19 +248,16 @@ public class DocumentDB {
 	}
 
 	public <S> S getDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag, Class<S> responseType) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "GET", etag, Response.Status.OK, null, responseType,
-				"docs", documentResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "GET", etag, Response.Status.OK, null, responseType, "docs", documentResId);
 	}
 
 	public <S, R> R replaceDocument(String dbResourceId, String collectionResId, String documentResId, S document, Class<R> responseType, IndexDirective indexDirective) throws WebApplicationException {
 		return replaceDocument(dbResourceId, collectionResId, documentResId, null, document, responseType, indexDirective);
 	}
 
-	public <S, R> R replaceDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag, S document, Class<R> responseType, IndexDirective indexDirective)
-			throws WebApplicationException {
+	public <S, R> R replaceDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag, S document, Class<R> responseType, IndexDirective indexDirective) throws WebApplicationException {
 
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), new IndexRequestHelper(indexDirective), null, "PUT", etag,
-				Response.Status.OK, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), responseType, "docs", documentResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), new IndexRequestHelper(indexDirective), null, "PUT", etag, Response.Status.OK, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), responseType, "docs", documentResId);
 	}
 
 	public void deleteDocument(String dbResourceId, String collectionResId, String documentResId) throws WebApplicationException {
@@ -253,8 +265,7 @@ public class DocumentDB {
 	}
 
 	public void deleteDocument(String dbResourceId, String collectionResId, String documentResId, ETag etag) throws WebApplicationException {
-		operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "DELETE", etag, Response.Status.NO_CONTENT, null,
-				JsonObject.class, "docs", documentResId);
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/", dbResourceId, collectionResId, documentResId)), null, null, "DELETE", etag, Response.Status.NO_CONTENT, null, JsonObject.class, "docs", documentResId);
 	}
 
 	public static class QueryRequest implements RequestHandler {
@@ -310,8 +321,7 @@ public class DocumentDB {
 
 	}
 
-	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, Object responseType, int pageSize, String continuationToken)
-			throws WebApplicationException {
+	public <R> R queryDocuments(String dbResourceId, String collectionResId, String query, Map<String, String> parameters, Object responseType, int pageSize, String continuationToken) throws WebApplicationException {
 		QueryResponse qresponse = new QueryResponse();
 		JsonArrayBuilder paramBuilder = Json.createArrayBuilder();
 		if (parameters != null) {
@@ -320,8 +330,7 @@ public class DocumentDB {
 			}
 		}
 		JsonObject queryObject = Json.createObjectBuilder().add("query", query).add("parameters", paramBuilder).build();
-		R result = operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new QueryRequest(pageSize, continuationToken), qresponse, "POST", null,
-				Response.Status.OK, Entity.entity(queryObject, "application/query+json"), responseType, "docs", collectionResId);
+		R result = operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/", dbResourceId, collectionResId)), new QueryRequest(pageSize, continuationToken), qresponse, "POST", null, Response.Status.OK, Entity.entity(queryObject, "application/query+json"), responseType, "docs", collectionResId);
 		if (result instanceof QueryResult) {
 			QueryResult qResult = (QueryResult) result;
 			qResult.setContinuation(qresponse.getContinuationToken());
@@ -348,19 +357,22 @@ public class DocumentDB {
 
 	}
 
-	public JsonObject createAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentId, String fileName, String contentType, String media)
-			throws WebApplicationException {
-		return createAttachment(dbResourceId, collectionResId, documentResId, attachmentId, fileName, contentType, media, null);
+	public JsonObject createAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentId, String fileName, String contentType, String media, JsonObject extraData) throws WebApplicationException {
+		return createAttachment(dbResourceId, collectionResId, documentResId, attachmentId, fileName, contentType, media, extraData, null);
 	}
 
-	public JsonObject createAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentId, String fileName, String contentType, String media,
-			IndexDirective indexDirective) throws WebApplicationException {
+	public JsonObject createAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentId, String fileName, String contentType, String media, JsonObject extraData, IndexDirective indexDirective) throws WebApplicationException {
 		if (attachmentId == null || contentType == null || media == null) {
 			throw new WebApplicationException(String.format("required attachment value missing: id: %s contentType: %s media: %s", attachmentId, contentType, media));
 		}
-		JsonObject document = Json.createObjectBuilder().add("id", attachmentId).add("contentType", contentType).add("media", media).build();
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/", dbResourceId, collectionResId, documentResId)), new FileNameIndexRequestHelper(fileName, indexDirective),
-				null, "POST", null, Response.Status.CREATED, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments", documentResId);
+		JsonObjectBuilder documentBuilder = Json.createObjectBuilder().add("id", attachmentId).add("contentType", contentType).add("media", media);
+		if (extraData != null) {
+			for (Entry<String, JsonValue> entry : extraData.entrySet()) {
+				documentBuilder.add(entry.getKey(), entry.getValue());
+			}
+		}
+		JsonObject document = documentBuilder.build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/", dbResourceId, collectionResId, documentResId)), new FileNameIndexRequestHelper(fileName, indexDirective), null, "POST", null, Response.Status.CREATED, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments", documentResId);
 
 	}
 
@@ -374,30 +386,31 @@ public class DocumentDB {
 	}
 
 	public JsonObject getAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "GET", etag,
-				Response.Status.OK, null, JsonObject.class, "attachments", attachmentResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "GET", etag, Response.Status.OK, null, JsonObject.class, "attachments", attachmentResId);
 	}
 
-	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, String attachmentId, String fileName, String contentType,
-			String media) throws WebApplicationException {
-		return replaceAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, null, attachmentId, fileName, contentType, media, null);
+	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, String attachmentId, String fileName, String contentType, String media, JsonObject extraData) throws WebApplicationException {
+		return replaceAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, null, attachmentId, fileName, contentType, media, extraData, null);
 	}
 
-	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag, String attachmentId, String fileName, String contentType,
-			String media) throws WebApplicationException {
-		return replaceAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, etag, attachmentId, fileName, contentType, media, null);
+	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag, String attachmentId, String fileName, String contentType, String media, JsonObject extraData) throws WebApplicationException {
+		return replaceAttachment(dbResourceId, collectionResId, documentResId, attachmentResId, etag, attachmentId, fileName, contentType, media, extraData, null);
 
 	}
 
-	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag, String attachmentId, String fileName, String contentType,
-			String media, IndexDirective indexDirective) throws WebApplicationException {
+	public JsonObject replaceAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag, String attachmentId, String fileName, String contentType, String media, JsonObject extraData, IndexDirective indexDirective) throws WebApplicationException {
 		if (attachmentId == null || contentType == null || media == null) {
 			throw new WebApplicationException(String.format("required attachment value missing: id: %s contentType: %s media: %s", attachmentId, contentType, media));
 		}
-		JsonObject document = Json.createObjectBuilder().add("id", attachmentId).add("contentType", contentType).add("media", media).build();
-
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), new FileNameIndexRequestHelper(
-				fileName, indexDirective), null, "PUT", etag, Response.Status.OK, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments", attachmentResId);
+		JsonObjectBuilder documentBuilder = Json.createObjectBuilder().add("id", attachmentId).add("contentType", contentType).add("media", media);
+		if (extraData != null) {
+			for (Entry<String, JsonValue> entry : extraData.entrySet()) {
+				documentBuilder.add(entry.getKey(), entry.getValue());
+			}
+		}
+		JsonObject document = documentBuilder.build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), new FileNameIndexRequestHelper(fileName, indexDirective), null, "PUT", etag, Response.Status.OK, Entity.entity(document, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "attachments",
+				attachmentResId);
 	}
 
 	public JsonObject deleteAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId) throws WebApplicationException {
@@ -405,20 +418,17 @@ public class DocumentDB {
 	}
 
 	public JsonObject deleteAttachment(String dbResourceId, String collectionResId, String documentResId, String attachmentResId, ETag etag) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "DELETE", etag,
-				Response.Status.NO_CONTENT, null, JsonObject.class, "attachments", attachmentResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/docs/%s/attachments/%s/", dbResourceId, collectionResId, documentResId, attachmentResId)), null, null, "DELETE", etag, Response.Status.NO_CONTENT, null, JsonObject.class, "attachments", attachmentResId);
 	}
 
 	public JsonObject createStoredProcedure(String dbResourceId, String collectionResId, String spName, String spBody) throws WebApplicationException {
 		JsonObject storedProcedure = Json.createObjectBuilder().add("id", spName).add("body", spBody).build();
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/", dbResourceId, collectionResId)), null, null, "POST", null, Response.Status.CREATED,
-				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "sprocs", collectionResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/", dbResourceId, collectionResId)), null, null, "POST", null, Response.Status.CREATED, Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "sprocs", collectionResId);
 	}
 
 	public JsonObject replaceStoredProcedure(String dbResourceId, String collectionResId, String spResId, String spName, String spBody) throws WebApplicationException {
 		JsonObject storedProcedure = Json.createObjectBuilder().add("id", spName).add("body", spBody).build();
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "PUT", null, Response.Status.OK,
-				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "sprocs", spResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "PUT", null, Response.Status.OK, Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "sprocs", spResId);
 	}
 
 	public JsonObject listStoredProcedures(String dbResourceId, String collectionResId) throws WebApplicationException {
@@ -428,26 +438,22 @@ public class DocumentDB {
 
 	//TODO can also query sprocs i.e.  "select * from root r where r.id = \"sproc name\"
 
-	public <S, R> R executeStoredProcedure(String dbResourceId, String collectionResId, String spResId, S document, Class<R> responseType) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "POST", null, Response.Status.OK,
-				document != null ? Entity.entity(document, MediaType.APPLICATION_JSON_TYPE) : null, responseType, "sprocs", spResId);
+	public <S, R> R executeStoredProcedure(String dbResourceId, String collectionResId, String spResId, S document, Object responseType) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "POST", null, Response.Status.OK, document != null ? Entity.entity(document, MediaType.APPLICATION_JSON_TYPE) : null, responseType, "sprocs", spResId);
 	}
 
 	public void deleteStoredProcedure(String dbResourceId, String collectionResId, String spResId) throws WebApplicationException {
-		operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "DELETE", null, Response.Status.NO_CONTENT, null, null, "sprocs",
-				spResId);
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/sprocs/%s/", dbResourceId, collectionResId, spResId)), null, null, "DELETE", null, Response.Status.NO_CONTENT, null, null, "sprocs", spResId);
 	}
 
 	public JsonObject createTrigger(String dbResourceId, String collectionResId, String triggerName, String triggerBody) throws WebApplicationException {
 		JsonObject storedProcedure = Json.createObjectBuilder().add("id", triggerName).add("body", triggerBody).build();
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/", dbResourceId, collectionResId)), null, null, "POST", null, Response.Status.CREATED,
-				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "triggers", collectionResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/", dbResourceId, collectionResId)), null, null, "POST", null, Response.Status.CREATED, Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "triggers", collectionResId);
 	}
 
 	public JsonObject replaceTrigger(String dbResourceId, String collectionResId, String triggerResId, String triggerName, String triggerBody) throws WebApplicationException {
 		JsonObject storedProcedure = Json.createObjectBuilder().add("id", triggerName).add("body", triggerBody).build();
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "PUT", null, Response.Status.OK,
-				Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "triggers", triggerResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "PUT", null, Response.Status.OK, Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "triggers", triggerResId);
 	}
 
 	public JsonObject listTrigger(String dbResourceId, String collectionResId) throws WebApplicationException {
@@ -458,17 +464,39 @@ public class DocumentDB {
 	//TODO can also query sprocs i.e.  "select * from root r where r.id = \"sproc name\"
 
 	public <S, R> R executeTrigger(String dbResourceId, String collectionResId, String triggerResId, S document, Class<R> responseType) throws WebApplicationException {
-		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "POST", null, Response.Status.OK,
-				document != null ? Entity.entity(document, MediaType.APPLICATION_JSON_TYPE) : null, responseType, "triggers", triggerResId);
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "POST", null, Response.Status.OK, document != null ? Entity.entity(document, MediaType.APPLICATION_JSON_TYPE) : null, responseType, "triggers", triggerResId);
 	}
 
 	public void deleteTrigger(String dbResourceId, String collectionResId, String triggerResId) throws WebApplicationException {
-		operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "DELETE", null, Response.Status.NO_CONTENT, null, null,
-				"triggers", triggerResId);
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/triggers/%s/", dbResourceId, collectionResId, triggerResId)), null, null, "DELETE", null, Response.Status.NO_CONTENT, null, null, "triggers", triggerResId);
 	}
 
-	public <S, R> R operation(WebTarget target, RequestHandler reqHandler, ResponseHandler resHandler, String method, ETag etag, Response.Status expectedStatus, Entity<S> body, Object responseType,
-			String resourceType, String resourceId) throws WebApplicationException {
+	public JsonObject createUDF(String dbResourceId, String collectionResId, String udfName, String udfBody) throws WebApplicationException {
+		JsonObject storedProcedure = Json.createObjectBuilder().add("id", udfName).add("body", udfBody).build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/udfs/", dbResourceId, collectionResId)), null, null, "POST", null, Response.Status.CREATED, Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "udfs", collectionResId);
+	}
+
+	public JsonObject replaceUDF(String dbResourceId, String collectionResId, String udfResId, String udfName, String udfBody) throws WebApplicationException {
+		JsonObject storedProcedure = Json.createObjectBuilder().add("id", udfName).add("body", udfBody).build();
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/udfs/%s/", dbResourceId, collectionResId, udfResId)), null, null, "PUT", null, Response.Status.OK, Entity.entity(storedProcedure, MediaType.APPLICATION_JSON_TYPE), JsonObject.class, "udfs", udfResId);
+	}
+
+	public JsonObject listUDFs(String dbResourceId, String collectionResId) throws WebApplicationException {
+		WebTarget target = endpoint.path(String.format("/dbs/%s/colls/%s/udfs/", dbResourceId, collectionResId));
+		return operation(target, null, null, "GET", null, Response.Status.OK, null, JsonObject.class, "udfs", collectionResId);
+	}
+
+	//TODO can also query sprocs i.e.  "select * from root r where r.id = \"sproc name\"
+
+	public <S, R> R executeUDF(String dbResourceId, String collectionResId, String udfResId, S document, Class<R> responseType) throws WebApplicationException {
+		return operation(endpoint.path(String.format("/dbs/%s/colls/%s/udfs/%s/", dbResourceId, collectionResId, udfResId)), null, null, "POST", null, Response.Status.OK, document != null ? Entity.entity(document, MediaType.APPLICATION_JSON_TYPE) : null, responseType, "udfs", udfResId);
+	}
+
+	public void deleteUDF(String dbResourceId, String collectionResId, String udfResId) throws WebApplicationException {
+		operation(endpoint.path(String.format("/dbs/%s/colls/%s/udfs/%s/", dbResourceId, collectionResId, udfResId)), null, null, "DELETE", null, Response.Status.NO_CONTENT, null, null, "udfs", udfResId);
+	}
+
+	public <S, R> R operation(WebTarget target, RequestHandler reqHandler, ResponseHandler resHandler, String method, ETag etag, Response.Status expectedStatus, Entity<S> body, Object responseType, String resourceType, String resourceId) throws WebApplicationException {
 
 		String path = target.getUri().getPath();
 		Builder builder = target.request();
@@ -478,8 +506,7 @@ public class DocumentDB {
 		}
 		Response response = builder.method(method, body);
 
-		if (expectedStatus != null && response.getStatusInfo().getStatusCode() != expectedStatus.getStatusCode()
-				&& !(etag != null && response.getStatusInfo().getStatusCode() != Response.Status.NOT_MODIFIED.getStatusCode())) {
+		if (expectedStatus != null && response.getStatusInfo().getStatusCode() != expectedStatus.getStatusCode() && !(etag != null && response.getStatusInfo().getStatusCode() != Response.Status.NOT_MODIFIED.getStatusCode())) {
 			throw new WebApplicationException(response);
 		}
 

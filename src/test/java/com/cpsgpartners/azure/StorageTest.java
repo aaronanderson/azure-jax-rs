@@ -3,12 +3,15 @@ package com.cpsgpartners.azure;
 import static org.junit.Assert.assertNotNull;
 
 import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
+import java.util.Properties;
 
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.w3c.dom.Document;
 
@@ -17,8 +20,20 @@ import com.cpsgpartners.azure.storage.Storage.BlobFile;
 
 public class StorageTest {
 
-	public static final String MASTER_KEY = "";
-	public static final String CLIENT_ID = "";
+	public static String MASTER_KEY;
+	public static String CLIENT_ID;
+
+	@BeforeClass
+	public static void setUpBeforeClass() throws Exception {
+		String fileName = System.getProperty("cpsg.test.cfg.filename");
+		//System.out.format("Reading config file : %s\n", fileName);
+		Properties p = new Properties();
+		try (FileInputStream fis = new FileInputStream(fileName)) {
+			p.load(fis);
+			MASTER_KEY = p.getProperty("storage.masterkey");
+			CLIENT_ID = p.getProperty("storage.clientid");
+		}
+	}
 
 	/*//@Test
 	public void testMSCreateCollection() throws Exception {
